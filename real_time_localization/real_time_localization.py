@@ -40,31 +40,6 @@ class Capture:
     def default_capture(self, frame, camera_name):
         return frame
     
-    def chessboard_capture(self, frame, camera_name):
-        row_number = self.settings['pattern_size'][0]
-        col_number = self.settings['pattern_size'][1]
-        internal_corners_X = col_number - 1
-        internal_corners_Y = row_number - 1
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        ret, corners = cv2.findChessboardCorners(gray, (internal_corners_Y, internal_corners_X), None, getattr(cv2, self.settings['chessboard_flags']))
-        frame_data = []
-        if ret:
-            text = "Detected"
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 15
-            thickness = 30
-            color = (0, 0, 255)
-            (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
-            center_x = frame.shape[1] // 2
-            center_y = frame.shape[0] // 2
-            org = (center_x - text_width // 2, center_y + text_height // 2)
-            cv2.putText(frame, text, org, font, font_scale, color, thickness, cv2.LINE_AA)
-            frame_data.append(text)
-        return frame_data
-        
-    def charuco_capture(self, frame, camera_name):
-        pass
-    
     def reproduce_capture(self, capture_function, video_path):
         cap = cv2.VideoCapture(video_path)
         self.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -235,6 +210,9 @@ class Localization(Capture):
             cv2.putText(frame, marker_info, (int(corners[i][0][0][0]), int(corners[i][0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
         
         return frame_data
+
+    def generate_objp():
+        pass
         
 def main():
     localization = Localization([cv2.VideoCapture(0)])
