@@ -7,6 +7,7 @@ from datetime import datetime
 import tqdm
 import math
 import matplotlib.pyplot as plt
+from scipy.spatial.transform import Rotation as R
 
 
 class Capture:
@@ -215,6 +216,8 @@ class Localization(Capture):
 
     def localization_hexagon(self, frame, camera_name):
         corners, ids, rejected = cv2.aruco.detectMarkers(frame, self.detect_dict_localization, parameters=self.detect_param_localization)
+        if ids is None:
+            return {}
         for id in ids[:, 0]:
             if id not in self.ids:
                 index = np.where(ids[:, 0] == id)
@@ -226,6 +229,19 @@ class Localization(Capture):
         image_points = np.concatenate([corner.reshape(-1, 2) for corner in corners], axis=0)
         print(objp)
         print(image_points)
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 1
+        thickness = 2
+        color = (0, 0, 255)
+        for i in range(len(corners)):
+            marker_info = (f"ID: {ids[i]}")
+            cv2.putText(frame, marker_info, (int(corners[i][0][0][0]), int(corners[i][0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+            cv2.putText(frame, '0', (int(corners[i][0][0][0]), int(corners[i][0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+            cv2.putText(frame, '1', (int(corners[i][0][1][0]), int(corners[i][0][1][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+            cv2.putText(frame, '2', (int(corners[i][0][2][0]), int(corners[i][0][2][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+            cv2.putText(frame, '3', (int(corners[i][0][3][0]), int(corners[i][0][3][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+
             
         _, rvec, tvec = cv2.solvePnP(objp, image_points, self.cameras_mtx[camera_name], self.cameras_dist[camera_name])
 
@@ -235,17 +251,9 @@ class Localization(Capture):
         homogeneous_object_point = np.eye(4)
         homogeneous_object_point[:3, :3] = rotation_matrix
         homogeneous_object_point[:3, 3] = tvec.flatten()
-        
-        # homogeneous_object_point = self.cameras_extrinsic[camera_name] @ homogeneous_object_point
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 1
-        thickness = 2
-        color = (0, 0, 255)
-        for i in range(len(corners)):
-            marker_info = (f"ID: {ids[i]}")
-            cv2.putText(frame, marker_info, (int(corners[i][0][0][0]), int(corners[i][0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
 
         frame_data = [homogeneous_object_point[:3, 3]]
+        print(frame_data)
         return frame_data
 
     def get_objp(self, ids):
@@ -259,42 +267,62 @@ class Localization(Capture):
 
     def form_objp_table(self):
         self.objp_table = {}
-        self.ids = [11, 12, 13, 14, 15, 16]
+        self.ids = [10, 11, 12, 13, 14, 15]
+        size = 0.068
         for i in range(len(self.ids)):
             id = self.ids[i]
-            index = 16 - id
+            index = 15 - id
             y = 0.2068
-            length = 0.0068
-            endpointLeftTop = np.array([0.11 * math.cos(math.pi/3*index),-y, 0.11 * math.sin(math.pi/3*index)])
-            endpointRightTop = np.array([0.11 * math.cos(math.pi/3*(index+1)),-y, 0.11 * math.sin(math.pi/3*(index+1))])
-            leftTop = endpointLeftTop*21/110 + endpointRightTop*89/110
-            rightTop = endpointLeftTop*89/110 + endpointRightTop*21/110
+            endpointLeftTop = np.array([0.11 * math.cos(math.pi/3*index),y, 0.11 * math.sin(math.pi/3*index)])
+            endpointRightTop = np.array([0.11 * math.cos(math.pi/3*(index+1)),y, 0.11 * math.sin(math.pi/3*(index+1))])
+            leftTop = endpointLeftTop*89/110 + endpointRightTop*21/110
+            rightTop = endpointLeftTop*21/110 + endpointRightTop*89/110
             objp = []
-            objp.append(leftTop)
+            objp.append(leftTop + [0, size, 0])
+            objp.append(rightTop + [0, size, 0])
             objp.append(rightTop)
-            objp.append(rightTop + [0, length, 0])
-            objp.append(leftTop + [0, length, 0])
+            objp.append(leftTop)
             # objp.append([0, 0, 0])
-            # objp.append([length, 0, 0])
-            # objp.append([length, length, 0])
-            # objp.append([0, length, 0])
+            # objp.append([size, 0, 0])
+            # objp.append([size, size, 0])
+            # objp.append([0, size, 0])
             self.objp_table[id] = np.array(objp)
+
+    def form_tag_transform_matrix(self):
+        self.tag_transform_matrix = {}
+        for i in range(len(self.ids)):
+            euler_angles = np.array([math.pi/2, 0, i *np.deg2rad(60)])
+            R_matrix = np.eye(4)
+            R_matrix[:3, :3] = R.from_euler('xyz', euler_angles).as_matrix()
+            
+            translation_vector = R_matrix @ np.array([0, 0, 0.095, 1])
+            R_matrix[:3, 3] = translation_vector[:3]
+            self.tag_transform_matrix[self.ids[i]] = R_matrix
 
     def debug_objp_table(self):
         plt.figure()
         for id in self.objp_table:
+            print(self.objp_table[id])
             plt.plot(self.objp_table[id][:, 0], self.objp_table[id][:, 2], label=f'ID: {id}')
+
+            plt.text(self.objp_table[id][0, 0], self.objp_table[id][0, 2], 'L', fontsize=12, ha='center', va='bottom')
+            plt.text(self.objp_table[id][1, 0], self.objp_table[id][1, 2], 'R', fontsize=12, ha='center', va='bottom')
         plt.legend()
         plt.show()
         dif = self.objp_table[11][0]-self.objp_table[11][1]
         print(np.sqrt(np.sum(dif**2)))
+
+    def debug_tag_transform_matrix(self):
+        for id in self.tag_transform_matrix:
+            arrow = np.array([[0, 0, 1, 1]]).T
+            print(self.tag_transform_matrix[id]@arrow)
     
 def main():
     localization = Localization([cv2.VideoCapture(1)])
     # localization.save_video(localization.default_capture, save_preview=True)
     localization.form_objp_table()
-    # localization.debug_objp_table()
-    localization.save_video(localization.localization_hexagon, save_preview=True)
+    localization.debug_objp_table()
+    # localization.save_video(localization.localization_hexagon, save_preview=True)
     
 
 if __name__ == "__main__":
