@@ -6,6 +6,7 @@ import pickle
 from datetime import datetime
 import tqdm
 import math
+import matplotlib.pyplot as plt
 
 
 class Capture:
@@ -214,10 +215,17 @@ class Localization(Capture):
 
     def localization_hexagon(self, frame, camera_name):
         corners, ids, rejected = cv2.aruco.detectMarkers(frame, self.detect_dict_localization, parameters=self.detect_param_localization)
-        if len(corners) == 0:
+        for id in ids[:, 0]:
+            if id not in self.ids:
+                index = np.where(ids[:, 0] == id)
+                ids = np.delete(ids, index, axis=0)
+                corners = np.delete(corners, index, axis=0)
+        if len(ids) == 0:
             return {}
         objp = self.get_objp(ids)
         image_points = np.concatenate([corner.reshape(-1, 2) for corner in corners], axis=0)
+        print(objp)
+        print(image_points)
             
         _, rvec, tvec = cv2.solvePnP(objp, image_points, self.cameras_mtx[camera_name], self.cameras_dist[camera_name])
 
@@ -238,31 +246,54 @@ class Localization(Capture):
             cv2.putText(frame, marker_info, (int(corners[i][0][0][0]), int(corners[i][0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
 
         frame_data = [homogeneous_object_point[:3, 3]]
-            
-        print(frame_data)
         return frame_data
 
     def get_objp(self, ids):
-        objp = np.zeros((len(ids) * 4, 3))
-        for i in range(len(ids)):
-            id = ids[i][0]
+        print(ids)
+        objp = []
+        for id in ids[:, 0]:
+            if id in self.objp_table:
+                objp.extend(self.objp_table[id])
+        objp = np.array(objp)
+        return objp
+
+    def form_objp_table(self):
+        self.objp_table = {}
+        self.ids = [11, 12, 13, 14, 15, 16]
+        for i in range(len(self.ids)):
+            id = self.ids[i]
             index = 16 - id
             y = 0.2068
             length = 0.0068
-            endpoint1 = np.array([0.11 * math.cos(math.pi/3*index),-y, 0.11 * math.sin(math.pi/3*index)])
-            endpoint2 = np.array([0.11 * math.cos(math.pi/3*(index+1)),-y, 0.11 * math.sin(math.pi/3*(index+1))])
-            left = endpoint1*21/110 + endpoint2*89/110
-            right = endpoint1*89/110 + endpoint2*21/110
-            objp[i * 4] = left
-            objp[i * 4 + 1] = right
-            objp[i * 4 + 2] = right + [0, length, 0]
-            objp[i * 4 + 3] = left + [0, length, 0]
+            endpointLeftTop = np.array([0.11 * math.cos(math.pi/3*index),-y, 0.11 * math.sin(math.pi/3*index)])
+            endpointRightTop = np.array([0.11 * math.cos(math.pi/3*(index+1)),-y, 0.11 * math.sin(math.pi/3*(index+1))])
+            leftTop = endpointLeftTop*21/110 + endpointRightTop*89/110
+            rightTop = endpointLeftTop*89/110 + endpointRightTop*21/110
+            objp = []
+            objp.append(leftTop)
+            objp.append(rightTop)
+            objp.append(rightTop + [0, length, 0])
+            objp.append(leftTop + [0, length, 0])
+            # objp.append([0, 0, 0])
+            # objp.append([length, 0, 0])
+            # objp.append([length, length, 0])
+            # objp.append([0, length, 0])
+            self.objp_table[id] = np.array(objp)
 
-        return objp
+    def debug_objp_table(self):
+        plt.figure()
+        for id in self.objp_table:
+            plt.plot(self.objp_table[id][:, 0], self.objp_table[id][:, 2], label=f'ID: {id}')
+        plt.legend()
+        plt.show()
+        dif = self.objp_table[11][0]-self.objp_table[11][1]
+        print(np.sqrt(np.sum(dif**2)))
     
 def main():
     localization = Localization([cv2.VideoCapture(1)])
     # localization.save_video(localization.default_capture, save_preview=True)
+    localization.form_objp_table()
+    # localization.debug_objp_table()
     localization.save_video(localization.localization_hexagon, save_preview=True)
     
 
