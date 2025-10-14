@@ -1,0 +1,6 @@
+Difference between cam0 and cam1 mean: [ 0.00365307 -0.00096855 -0.01120276]
+Difference between cam0 and cam1 std: [0.00908171 0.001047   0.00545174]
+Difference between cam1 and cam1 mean: [0. 0. 0.]
+Difference between cam1 and cam1 std: [0. 0. 0.]
+Difference between cam2 and cam1 mean: [ 0.00652811 -0.0124451   0.00390027]
+Difference between cam2 and cam1 std: [0.00589053 0.00272322 0.00475644]
