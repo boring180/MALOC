@@ -5,6 +5,7 @@ import os
 import pickle
 from datetime import datetime
 import tqdm
+import math
 
 
 class Capture:
@@ -38,7 +39,7 @@ class Capture:
             self.reference_shape = None
             
     def default_capture(self, frame, camera_name):
-        return frame
+        return {}
     
     def reproduce_capture(self, capture_function, video_path):
         cap = cv2.VideoCapture(video_path)
@@ -165,11 +166,11 @@ class Localization(Capture):
         super().__init__(cameras)
         self.cameras_mtx = {}
         self.cameras_dist = {}
-        self.cameras_extrinsic = {}
+        # self.cameras_extrinsic = {}
         for camera_name in self.settings['cameras']:
             self.cameras_mtx[camera_name] = pickle.load(open(f'{self.settings["camera_parameter_path"]}/mtx_{camera_name}.pkl', 'rb'))
             self.cameras_dist[camera_name] = pickle.load(open(f'{self.settings["camera_parameter_path"]}/dist_{camera_name}.pkl', 'rb'))
-            self.cameras_extrinsic[camera_name] = pickle.load(open(f'{self.settings["camera_parameter_path"]}/extrinsic_{camera_name}.pkl', 'rb'))
+            # self.cameras_extrinsic[camera_name] = pickle.load(open(f'{self.settings["camera_parameter_path"]}/extrinsic_{camera_name}.pkl', 'rb'))
         
         self.detect_param_localization = cv2.aruco.DetectorParameters()
         self.detect_dict_localization = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, self.settings['aruco_dict_localization']))
@@ -185,7 +186,7 @@ class Localization(Capture):
             homogeneous_marker_point[:3, :3] = rvec
             homogeneous_marker_point[:3, 3] = tvec
             
-            homogeneous_marker_point = self.cameras_extrinsic[camera_name] @ homogeneous_marker_point
+            # homogeneous_marker_point = self.cameras_extrinsic[camera_name] @ homogeneous_marker_point
             marker_info = (f"ID: {ids[i]} X: {homogeneous_marker_point[:3, 3][0]:.2f} Y: {homogeneous_marker_point[:3, 3][1]:.2f} Z: {homogeneous_marker_point[:3, 3][2]:.2f}")
             frame_data[ids[i][0]] = homogeneous_marker_point[:3, 3]
             font = cv2.FONT_HERSHEY_SIMPLEX
@@ -211,14 +212,63 @@ class Localization(Capture):
         
         return frame_data
 
-    def generate_objp():
-        pass
+    def localization_hexagon(self, frame, camera_name):
+        corners, ids, rejected = cv2.aruco.detectMarkers(frame, self.detect_dict_localization, parameters=self.detect_param_localization)
+        if len(corners) == 0:
+            return {}
+        objp = self.get_objp(ids)
+        image_points = np.concatenate([corner.reshape(-1, 2) for corner in corners], axis=0)
+            
+        _, rvec, tvec = cv2.solvePnP(objp, image_points, self.cameras_mtx[camera_name], self.cameras_dist[camera_name])
+
+        cv2.drawFrameAxes(frame, self.cameras_mtx[camera_name], self.cameras_dist[camera_name], rvec, tvec, 0.1)
+
+        rotation_matrix, _ = cv2.Rodrigues(rvec)
+        homogeneous_marker_point = np.eye(4)
+        homogeneous_marker_point[:3, :3] = rotation_matrix
+        homogeneous_marker_point[:3, 3] = tvec.flatten()
         
-def main():
-    localization = Localization([cv2.VideoCapture(0)])
-    localization.save_video(localization.detection, save_preview=False)
+        # homogeneous_marker_point = self.cameras_extrinsic[camera_name] @ homogeneous_marker_point
+        frame_data = (f"X: {homogeneous_marker_point[:3, 3][0]:.2f} Y: {homogeneous_marker_point[:3, 3][1]:.2f} Z: {homogeneous_marker_point[:3, 3][2]:.2f}")
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 1
+        thickness = 2
+        color = (0, 0, 255)
+        cv2.putText(frame, frame_data, (int(corners[0][0][0][0]), int(corners[0][0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+
+        for i in range(len(corners)):
+            marker_info = (f"ID: {ids[i]}")
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 1
+            thickness = 2
+            color = (0, 0, 255)
+            cv2.putText(frame, marker_info, (int(corners[i][0][0][0]), int(corners[i][0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+            
+        return frame_data
+
+    def get_objp(self, ids):
+        objp = np.zeros((len(ids) * 4, 3))
+        for i in range(len(ids)):
+            id = ids[i][0]
+            index = 16 - id
+            y = 0.2068
+            length = 0.0068
+            endpoint1 = np.array([0.11 * math.cos(math.pi/3*index),-y, 0.11 * math.sin(math.pi/3*index)])
+            endpoint2 = np.array([0.11 * math.cos(math.pi/3*(index+1)),-y, 0.11 * math.sin(math.pi/3*(index+1))])
+            left = endpoint1*21/110 + endpoint2*89/110
+            right = endpoint1*89/110 + endpoint2*21/110
+            objp[i * 4] = left
+            objp[i * 4 + 1] = right
+            objp[i * 4 + 2] = right + [0, length, 0]
+            objp[i * 4 + 3] = left + [0, length, 0]
+
+        return objp
     
-    # localization = Localization()
-    # localization.reproduce_capture(localization.localization, 'output/20251001_183755.mp4')
+def main():
+    localization = Localization([cv2.VideoCapture(1)])
+    # localization.save_video(localization.default_capture, save_preview=True)
+    localization.save_video(localization.localization_hexagon, save_preview=True)
+    
+
 if __name__ == "__main__":
     main()
