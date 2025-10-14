@@ -224,26 +224,22 @@ class Localization(Capture):
         cv2.drawFrameAxes(frame, self.cameras_mtx[camera_name], self.cameras_dist[camera_name], rvec, tvec, 0.1)
 
         rotation_matrix, _ = cv2.Rodrigues(rvec)
-        homogeneous_marker_point = np.eye(4)
-        homogeneous_marker_point[:3, :3] = rotation_matrix
-        homogeneous_marker_point[:3, 3] = tvec.flatten()
+        homogeneous_object_point = np.eye(4)
+        homogeneous_object_point[:3, :3] = rotation_matrix
+        homogeneous_object_point[:3, 3] = tvec.flatten()
         
-        # homogeneous_marker_point = self.cameras_extrinsic[camera_name] @ homogeneous_marker_point
-        frame_data = (f"X: {homogeneous_marker_point[:3, 3][0]:.2f} Y: {homogeneous_marker_point[:3, 3][1]:.2f} Z: {homogeneous_marker_point[:3, 3][2]:.2f}")
+        # homogeneous_object_point = self.cameras_extrinsic[camera_name] @ homogeneous_object_point
         font = cv2.FONT_HERSHEY_SIMPLEX
         font_scale = 1
         thickness = 2
         color = (0, 0, 255)
-        cv2.putText(frame, frame_data, (int(corners[0][0][0][0]), int(corners[0][0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
-
         for i in range(len(corners)):
             marker_info = (f"ID: {ids[i]}")
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 1
-            thickness = 2
-            color = (0, 0, 255)
             cv2.putText(frame, marker_info, (int(corners[i][0][0][0]), int(corners[i][0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+
+        frame_data = [homogeneous_object_point[:3, 3]]
             
+        print(frame_data)
         return frame_data
 
     def get_objp(self, ids):
