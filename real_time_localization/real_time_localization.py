@@ -277,7 +277,7 @@ class Localization(Capture):
             homogeneous_marker_point[:3, :3] = cv2.Rodrigues(rvec)[0]
             homogeneous_marker_point[:3, 3] = tvec
 
-            # homogeneous_marker_point = self.tag_transform_matrix[ids[i][0]] @ homogeneous_marker_point
+            # homogeneous_marker_point = self.tag_inverse_transform_matrix[ids[i][0]] @ homogeneous_marker_point
             rvec, _ = cv2.Rodrigues(homogeneous_marker_point[:3, :3])
             tvec = homogeneous_marker_point[:3, 3]
 
@@ -331,6 +331,7 @@ class Localization(Capture):
 
     def form_tag_transform_matrix(self):
         self.tag_transform_matrix = {}
+        self.tag_inverse_transform_matrix = {}
         self.ids = [10, 11, 12, 13, 14, 15]
         for i in range(len(self.ids)):
             transform = np.eye(4)
@@ -347,12 +348,13 @@ class Localization(Capture):
             translation = np.array([0, 0, 0.095, 1])
             transform[:4, 3] = transform @ translation
 
-            # inv_transform = np.eye(4)
-            # inv_transform[:3, :3] = transform[:3, :3].T
-            # inv_transform[:3, 3] = -inv_transform[:3, :3] @ transform[:3, 3]
+            inv_transform = np.eye(4)
+            inv_transform[:3, :3] = transform[:3, :3].T
+            inv_transform[:3, 3] = -inv_transform[:3, :3] @ transform[:3, 3]
             # transform = inv_transform
 
             self.tag_transform_matrix[self.ids[i]] = transform
+            self.tag_inverse_transform_matrix[self.ids[i]] = inv_transform
 
     def debug_objp_table(self):
         plt.figure()
@@ -370,10 +372,19 @@ class Localization(Capture):
     def debug_tag_transform_matrix(self):
         fig = plt.figure(figsize=(10, 10))
         self.visualize_axis_location(fig, 45, 0, 0, i=1)
-        self.visualize_axis_location(fig, elev=45, azim=45, roll=0, i=2)
-        self.visualize_axis_location(fig, elev=-90, azim=90, roll=0, i=3)
+        # self.visualize_axis_location(fig, elev=45, azim=45, roll=0, i=2)
+        # self.visualize_axis_location(fig, elev=-90, azim=90, roll=0, i=3)
         plt.show()
+        print('--------------------------------')
+        print("tag_inverse_transform_matrix")
         for i in range(len(self.ids)):
+            print('--------------------------------')
+            print(self.ids[i])
+            print(self.tag_inverse_transform_matrix[self.ids[i]])
+        print("tag_transform_matrix")
+        for i in range(len(self.ids)):
+            print('--------------------------------')
+            print(self.ids[i])
             print(self.tag_transform_matrix[self.ids[i]])
 
     def visualize_axis_location(self, fig, elev, azim, roll, i):
@@ -400,12 +411,17 @@ class Localization(Capture):
         
         for id in self.ids:
             colors = ['red', 'green', 'blue']
-            axis = np.eye(3) * self.settings['marker_size_localization']
+            axis = np.eye(4) * self.settings['marker_size_localization']
+            transformation = self.tag_inverse_transform_matrix[id]
+            print('--------------------------------')
+            print(id)
+            print(transformation)
+
             for i in range(3):
-                orientation = self.tag_transform_matrix[id][:3, :3] @ axis[i, :]
-                x = self.tag_transform_matrix[id][0, 3]
-                y = self.tag_transform_matrix[id][1, 3]
-                z = self.tag_transform_matrix[id][2, 3]
+                orientation = transformation @ axis[i, :]
+                x = transformation[0, 3]
+                y = transformation[1, 3]
+                z = transformation[2, 3]
                 u = orientation[0]
                 v = orientation[1]
                 w = orientation[2]
@@ -424,8 +440,8 @@ def main():
     # localization.form_objp_table()
     localization.form_tag_transform_matrix()
     # localization.debug_objp_table()
-    # localization.debug_tag_transform_matrix()
-    localization.save_video(localization.localization_transform, save_preview=True)
+    localization.debug_tag_transform_matrix()
+    # localization.save_video(localization.localization_transform, save_preview=True)
     
 
 if __name__ == "__main__":
