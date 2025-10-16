@@ -273,26 +273,24 @@ class Localization(Capture):
         
         for i in range(len(corners)):
             rvec, tvec, _ = cv2.aruco.estimatePoseSingleMarkers(corners[i], self.settings['marker_size_localization'], self.cameras_mtx[camera_name], self.cameras_dist[camera_name])
+            rotation_matrix, _ = cv2.Rodrigues(rvec[0][0])
             homogeneous_marker_point = np.eye(4)
-            homogeneous_marker_point[:3, :3] = cv2.Rodrigues(rvec)[0]
-            homogeneous_marker_point[:3, 3] = tvec
+            homogeneous_marker_point[:3, :3] = rotation_matrix
+            homogeneous_marker_point[:3, 3] = tvec[0][0]
 
             # homogeneous_marker_point = self.tag_inverse_transform_matrix[ids[i][0]] @ homogeneous_marker_point
             rvec, _ = cv2.Rodrigues(homogeneous_marker_point[:3, :3])
-            tvec = homogeneous_marker_point[:3, 3]
+            tvec = homogeneous_marker_point[:3, 3] + self.tag_inverse_transform_matrix[ids[i][0]][:3, 3]
+            marker_coordinates = tvec
 
-            print(ids[i][0])
-            print(rvec)
-            print(tvec)
-            
             cv2.drawFrameAxes(frame, self.cameras_mtx[camera_name], self.cameras_dist[camera_name], rvec, tvec, 0.1)
 
-            marker_info = (f"ID: {ids[i][0]}")
             frame_data[ids[i][0]] = tvec.flatten()
             font = cv2.FONT_HERSHEY_SIMPLEX
             font_scale = 1
             thickness = 2
             color = (0, 0, 255)
+            marker_info = (f"ID: {ids[i]} X: {marker_coordinates[0]:.2f} Y: {marker_coordinates[1]:.2f} Z: {marker_coordinates[2]:.2f}")
             cv2.putText(frame, marker_info, (int(corners[i][0][0][0]), int(corners[i][0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
             
         return frame_data
@@ -440,8 +438,8 @@ def main():
     # localization.form_objp_table()
     localization.form_tag_transform_matrix()
     # localization.debug_objp_table()
-    localization.debug_tag_transform_matrix()
-    # localization.save_video(localization.localization_transform, save_preview=True)
+    # localization.debug_tag_transform_matrix()
+    localization.save_video(localization.localization_transform, save_preview=True)
     
 
 if __name__ == "__main__":
