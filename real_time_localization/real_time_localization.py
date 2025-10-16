@@ -347,11 +347,12 @@ class Localization(Capture):
             translation = np.array([0, 0, 0.095, 1])
             transform[:4, 3] = transform @ translation
 
-            inv_transform = np.eye(4)
-            inv_transform[:3, :3] = transform[:3, :3].T
-            inv_transform[:3, 3] = -inv_transform[:3, :3] @ transform[:3, 3]
+            # inv_transform = np.eye(4)
+            # inv_transform[:3, :3] = transform[:3, :3].T
+            # inv_transform[:3, 3] = -inv_transform[:3, :3] @ transform[:3, 3]
+            # transform = inv_transform
 
-            self.tag_transform_matrix[self.ids[i]] = inv_transform
+            self.tag_transform_matrix[self.ids[i]] = transform
 
     def debug_objp_table(self):
         plt.figure()
