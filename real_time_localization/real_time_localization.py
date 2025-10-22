@@ -215,36 +215,38 @@ class Localization(Capture):
         
         return frame_data
 
-    def localization_hexagon(self, frame, camera_name):
-        corners, ids, rejected = cv2.aruco.detectMarkers(frame, self.detect_dict_localization, parameters=self.detect_param_localization)
+    def localization_pnp(self, frame, camera_name):
+        imgp, ids, rejected = cv2.aruco.detectMarkers(frame, self.detect_dict_localization, parameters=self.detect_param_localization)
         if ids is None:
             return {}
         for id in ids[:, 0]:
             if id not in self.ids:
                 index = np.where(ids[:, 0] == id)
                 ids = np.delete(ids, index, axis=0)
-                corners = np.delete(corners, index, axis=0)
+                imgp = np.delete(imgp, index, axis=0)
+        
+        imgp = np.array(imgp)
+        imgp = imgp.reshape(-1, 2)
         if len(ids) == 0:
             return {}
         objp = self.get_objp(ids)
-        image_points = np.concatenate([corner.reshape(-1, 2) for corner in corners], axis=0)
+        print(imgp)
         print(objp)
-        print(image_points)
 
         font = cv2.FONT_HERSHEY_SIMPLEX
         font_scale = 1
         thickness = 2
         color = (0, 0, 255)
-        for i in range(len(corners)):
+        for i in range(len(ids)):
             marker_info = (f"ID: {ids[i]}")
-            cv2.putText(frame, marker_info, (int(corners[i][0][0][0]), int(corners[i][0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
-            cv2.putText(frame, '0', (int(corners[i][0][0][0]), int(corners[i][0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
-            cv2.putText(frame, '1', (int(corners[i][0][1][0]), int(corners[i][0][1][1])), font, font_scale, color, thickness, cv2.LINE_AA)
-            cv2.putText(frame, '2', (int(corners[i][0][2][0]), int(corners[i][0][2][1])), font, font_scale, color, thickness, cv2.LINE_AA)
-            cv2.putText(frame, '3', (int(corners[i][0][3][0]), int(corners[i][0][3][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+            cv2.putText(frame, marker_info, (int(0.5 * (imgp[i * 4 + 0][0] + imgp[i * 4 + 2][0])), int(0.5 * (imgp[i * 4 + 0][1] + imgp[i * 4 + 2][1]))), font, font_scale, color, thickness, cv2.LINE_AA)
+            cv2.putText(frame, '0', (int(imgp[i * 4 + 0][0]), int(imgp[i * 4 + 0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+            cv2.putText(frame, '1', (int(imgp[i * 4 + 1][0]), int(imgp[i * 4 + 1][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+            cv2.putText(frame, '2', (int(imgp[i * 4 + 2][0]), int(imgp[i * 4 + 2][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+            cv2.putText(frame, '3', (int(imgp[i * 4 + 3][0]), int(imgp[i * 4 + 3][1])), font, font_scale, color, thickness, cv2.LINE_AA)
 
             
-        _, rvec, tvec = cv2.solvePnP(objp, image_points, self.cameras_mtx[camera_name], self.cameras_dist[camera_name])
+        _, rvec, tvec = cv2.solvePnP(objp, imgp, self.cameras_mtx[camera_name], self.cameras_dist[camera_name], flags=cv2.SOLVEPNP_EPNP)
 
         cv2.drawFrameAxes(frame, self.cameras_mtx[camera_name], self.cameras_dist[camera_name], rvec, tvec, 0.1)
 
@@ -254,7 +256,7 @@ class Localization(Capture):
         homogeneous_object_point[:3, 3] = tvec.flatten()
 
         frame_data = [homogeneous_object_point[:3, 3]]
-        print(frame_data)
+        # print(frame_data)
         return frame_data
 
     def localization_transform(self, frame, camera_name):
@@ -304,7 +306,7 @@ class Localization(Capture):
         objp = np.array(objp)
         return objp
 
-    def form_objp_table(self):
+    def form_objp_table_hexagon(self):
         self.objp_table = {}
         self.ids = [10, 11, 12, 13, 14, 15]
         size = 0.068
@@ -326,6 +328,26 @@ class Localization(Capture):
             # objp.append([size, size, 0])
             # objp.append([0, size, 0])
             self.objp_table[id] = np.array(objp)
+    
+    def form_objp_table_cube(self):
+        self.objp_table = {}
+        self.ids = [10, 11, 12, 13]
+        size = 0.041
+        for i in range(len(self.ids)):
+            id = self.ids[i]
+            index = 13 - id
+            y = 0
+            endpointLeftTop = np.array([0.042 * math.cos(math.pi/2*index),y, 0.042 * math.sin(math.pi/2*index)])
+            endpointRightTop = np.array([0.042 * math.cos(math.pi/2*(index+1)),y, 0.042 * math.sin(math.pi/2*(index+1))])
+            leftTop = endpointLeftTop*51/60 + endpointRightTop*9/60
+            rightTop = endpointLeftTop*9/60 + endpointRightTop*51/60
+            objp = []
+            objp.append(leftTop + [0, size, 0])
+            objp.append(rightTop + [0, size, 0])
+            objp.append(rightTop + [0, 0, 0])
+            objp.append(leftTop + [0, 0, 0])
+            self.objp_table[id] = np.array(objp)
+
 
     def form_tag_transform_matrix(self):
         self.tag_transform_matrix = {}
@@ -355,13 +377,18 @@ class Localization(Capture):
             self.tag_inverse_transform_matrix[self.ids[i]] = inv_transform
 
     def debug_objp_table(self):
-        plt.figure()
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1, projection='3d')
+        ax.set_box_aspect([1,1,1])
         for id in self.objp_table:
             print(self.objp_table[id])
-            plt.plot(self.objp_table[id][:, 0], self.objp_table[id][:, 2], label=f'ID: {id}')
+            ax.plot(self.objp_table[id][:, 0], self.objp_table[id][:, 1], self.objp_table[id][:, 2], 'o-', label=f'ID: {id}')
 
-            plt.text(self.objp_table[id][0, 0], self.objp_table[id][0, 2], 'L', fontsize=12, ha='center', va='bottom')
-            plt.text(self.objp_table[id][1, 0], self.objp_table[id][1, 2], 'R', fontsize=12, ha='center', va='bottom')
+            ax.text(self.objp_table[id][0, 0], self.objp_table[id][0, 1], self.objp_table[id][0, 2], 'L', fontsize=12, ha='center', va='bottom')
+            ax.text(self.objp_table[id][1, 0], self.objp_table[id][1, 1], self.objp_table[id][1, 2], 'R', fontsize=12, ha='center', va='bottom')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
         plt.legend()
         plt.show()
         dif = self.objp_table[11][0]-self.objp_table[11][1]
@@ -434,12 +461,9 @@ class Localization(Capture):
     
 def main():
     localization = Localization([cv2.VideoCapture(1)])
-    # localization.save_video(localization.default_capture, save_preview=True)
-    # localization.form_objp_table()
-    localization.form_tag_transform_matrix()
+    localization.form_objp_table_cube()
     # localization.debug_objp_table()
-    # localization.debug_tag_transform_matrix()
-    localization.save_video(localization.localization_transform, save_preview=True)
+    localization.save_video(localization.localization_pnp, save_preview=True)
     
 
 if __name__ == "__main__":
