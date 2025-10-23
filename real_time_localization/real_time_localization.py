@@ -230,8 +230,6 @@ class Localization(Capture):
         if len(ids) == 0:
             return {}
         objp = self.get_objp(ids)
-        print(imgp)
-        print(objp)
 
         font = cv2.FONT_HERSHEY_SIMPLEX
         font_scale = 1
@@ -298,7 +296,6 @@ class Localization(Capture):
         return frame_data
 
     def get_objp(self, ids):
-        print(ids)
         objp = []
         for id in ids[:, 0]:
             if id in self.objp_table:
@@ -310,6 +307,7 @@ class Localization(Capture):
         self.objp_table = {}
         self.ids = [10, 11, 12, 13, 14, 15]
         size = 0.068
+        # for i in range(len(self.ids)):
         for i in range(len(self.ids)):
             id = self.ids[i]
             index = 15 - id
@@ -331,21 +329,26 @@ class Localization(Capture):
     
     def form_objp_table_cube(self):
         self.objp_table = {}
-        self.ids = [10, 11, 12, 13]
+        self.ids = [10]
         size = 0.041
         for i in range(len(self.ids)):
             id = self.ids[i]
             index = 13 - id
-            y = 0
-            endpointLeftTop = np.array([0.042 * math.cos(math.pi/2*index),y, 0.042 * math.sin(math.pi/2*index)])
-            endpointRightTop = np.array([0.042 * math.cos(math.pi/2*(index+1)),y, 0.042 * math.sin(math.pi/2*(index+1))])
+            endpointLeftTop = np.array([0.042 * math.cos(math.pi/2*index + math.pi/4),0, 0.042 * math.sin(math.pi/2*index + math.pi/4)])
+            print(endpointLeftTop)
+            endpointRightTop = np.array([0.042 * math.cos(math.pi/2*(index+1) + math.pi/4),0, 0.042 * math.sin(math.pi/2*(index+1) + math.pi/4)])
+            print(endpointRightTop)
             leftTop = endpointLeftTop*51/60 + endpointRightTop*9/60
             rightTop = endpointLeftTop*9/60 + endpointRightTop*51/60
             objp = []
-            objp.append(leftTop + [0, size, 0])
-            objp.append(rightTop + [0, size, 0])
-            objp.append(rightTop + [0, 0, 0])
-            objp.append(leftTop + [0, 0, 0])
+            # objp.append(leftTop + [0, size, 0])
+            # objp.append(rightTop + [0, size, 0])
+            # objp.append(rightTop + [0, 0, 0])
+            # objp.append(leftTop + [0, 0, 0])
+            objp.append(leftTop + [0, -size/2, 0])
+            objp.append(rightTop + [0, -size/2, 0])
+            objp.append(rightTop + [0, size/2, 0])
+            objp.append(leftTop + [0, size/2, 0])
             self.objp_table[id] = np.array(objp)
 
 
@@ -391,7 +394,7 @@ class Localization(Capture):
         ax.set_zlabel('Z')
         plt.legend()
         plt.show()
-        dif = self.objp_table[11][0]-self.objp_table[11][1]
+        dif = self.objp_table[10][0]-self.objp_table[10][1]
         print(np.sqrt(np.sum(dif**2)))
 
     def debug_tag_transform_matrix(self):
@@ -463,7 +466,8 @@ def main():
     localization = Localization([cv2.VideoCapture(1)])
     localization.form_objp_table_cube()
     # localization.debug_objp_table()
-    localization.save_video(localization.localization_pnp, save_preview=True)
+    # localization.save_video(localization.localization_pnp, save_preview=True)
+    localization.reproduce_capture(localization.localization_pnp, 'output/cam1_20251023_114914.mp4')
     
 
 if __name__ == "__main__":
