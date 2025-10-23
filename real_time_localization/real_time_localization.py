@@ -307,24 +307,22 @@ class Localization(Capture):
         self.objp_table = {}
         self.ids = [10, 11, 12, 13, 14, 15]
         size = 0.068
-        # for i in range(len(self.ids)):
         for i in range(len(self.ids)):
             id = self.ids[i]
             index = 15 - id
-            y = 0.2068
-            endpointLeftTop = np.array([0.11 * math.cos(math.pi/3*index),y, 0.11 * math.sin(math.pi/3*index)])
-            endpointRightTop = np.array([0.11 * math.cos(math.pi/3*(index+1)),y, 0.11 * math.sin(math.pi/3*(index+1))])
+            endpointLeftTop = np.array([0.11 * math.cos(math.pi/3*index + math.pi/4),0, 0.11 * math.sin(math.pi/3*index + math.pi/4)])
+            endpointRightTop = np.array([0.11 * math.cos(math.pi/3*(index+1) + math.pi/4),0, 0.11 * math.sin(math.pi/3*(index+1) + math.pi/4)])
             leftTop = endpointLeftTop*89/110 + endpointRightTop*21/110
             rightTop = endpointLeftTop*21/110 + endpointRightTop*89/110
             objp = []
-            objp.append(leftTop + [0, size, 0])
-            objp.append(rightTop + [0, size, 0])
-            objp.append(rightTop + [0, 0, 0])
-            objp.append(leftTop + [0, 0, 0])
-            # objp.append([0, 0, 0])
-            # objp.append([size, 0, 0])
-            # objp.append([size, size, 0])
-            # objp.append([0, size, 0])
+            # objp.append(leftTop + [0, size, 0])
+            # objp.append(rightTop + [0, size, 0])
+            # objp.append(rightTop + [0, 0, 0])
+            # objp.append(leftTop + [0, 0, 0])
+            objp.append(leftTop + [0, -size/2, 0])
+            objp.append(rightTop + [0, -size/2, 0])
+            objp.append(rightTop + [0, size/2, 0])
+            objp.append(leftTop + [0, size/2, 0])
             self.objp_table[id] = np.array(objp)
     
     def form_objp_table_cube(self):
@@ -462,9 +460,11 @@ class Localization(Capture):
     
 def main():
     localization = Localization([cv2.VideoCapture(1)])
-    localization.form_objp_table_cube()
+    # localization.form_objp_table_cube()
+    localization.form_objp_table_hexagon()
     # localization.debug_objp_table()
-    localization.save_video(localization.localization_pnp, save_preview=True)
+    localization.save_video(localization.detection, save_preview=True)
+    # localization.save_video(localization.localization_pnp, save_preview=True)
     # localization.reproduce_capture(localization.localization_pnp, 'output/cam1_20251023_114914.mp4')
     
 
