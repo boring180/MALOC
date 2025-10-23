@@ -306,14 +306,14 @@ class Localization(Capture):
     def form_objp_table_hexagon(self):
         self.objp_table = {}
         self.ids = [10, 11, 12, 13, 14, 15]
-        size = 0.068
+        size = 0.056
         for i in range(len(self.ids)):
             id = self.ids[i]
             index = 15 - id
             endpointLeftTop = np.array([0.11 * math.cos(math.pi/3*index + math.pi/4),0, 0.11 * math.sin(math.pi/3*index + math.pi/4)])
             endpointRightTop = np.array([0.11 * math.cos(math.pi/3*(index+1) + math.pi/4),0, 0.11 * math.sin(math.pi/3*(index+1) + math.pi/4)])
-            leftTop = endpointLeftTop*89/110 + endpointRightTop*21/110
-            rightTop = endpointLeftTop*21/110 + endpointRightTop*89/110
+            leftTop = endpointLeftTop*83/110 + endpointRightTop*27/110
+            rightTop = endpointLeftTop*27/110 + endpointRightTop*83/110
             objp = []
             # objp.append(leftTop + [0, size, 0])
             # objp.append(rightTop + [0, size, 0])
@@ -463,8 +463,8 @@ def main():
     # localization.form_objp_table_cube()
     localization.form_objp_table_hexagon()
     # localization.debug_objp_table()
-    localization.save_video(localization.detection, save_preview=True)
-    # localization.save_video(localization.localization_pnp, save_preview=True)
+    # localization.save_video(localization.detection, save_preview=True)
+    localization.save_video(localization.localization_pnp, save_preview=True)
     # localization.reproduce_capture(localization.localization_pnp, 'output/cam1_20251023_114914.mp4')
     
 
