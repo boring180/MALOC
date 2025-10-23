@@ -244,7 +244,7 @@ class Localization(Capture):
             cv2.putText(frame, '3', (int(imgp[i * 4 + 3][0]), int(imgp[i * 4 + 3][1])), font, font_scale, color, thickness, cv2.LINE_AA)
 
             
-        _, rvec, tvec = cv2.solvePnP(objp, imgp, self.cameras_mtx[camera_name], self.cameras_dist[camera_name], flags=cv2.SOLVEPNP_EPNP)
+        _, rvec, tvec = cv2.solvePnP(objp, imgp, self.cameras_mtx[camera_name], self.cameras_dist[camera_name], flags=cv2.SOLVEPNP_ITERATIVE)
 
         cv2.drawFrameAxes(frame, self.cameras_mtx[camera_name], self.cameras_dist[camera_name], rvec, tvec, 0.1)
 
@@ -329,15 +329,13 @@ class Localization(Capture):
     
     def form_objp_table_cube(self):
         self.objp_table = {}
-        self.ids = [10]
+        self.ids = [10, 11, 12, 13]
         size = 0.041
         for i in range(len(self.ids)):
             id = self.ids[i]
-            index = 13 - id
+            index = id - 10
             endpointLeftTop = np.array([0.042 * math.cos(math.pi/2*index + math.pi/4),0, 0.042 * math.sin(math.pi/2*index + math.pi/4)])
-            print(endpointLeftTop)
             endpointRightTop = np.array([0.042 * math.cos(math.pi/2*(index+1) + math.pi/4),0, 0.042 * math.sin(math.pi/2*(index+1) + math.pi/4)])
-            print(endpointRightTop)
             leftTop = endpointLeftTop*51/60 + endpointRightTop*9/60
             rightTop = endpointLeftTop*9/60 + endpointRightTop*51/60
             objp = []
@@ -466,8 +464,8 @@ def main():
     localization = Localization([cv2.VideoCapture(1)])
     localization.form_objp_table_cube()
     # localization.debug_objp_table()
-    # localization.save_video(localization.localization_pnp, save_preview=True)
-    localization.reproduce_capture(localization.localization_pnp, 'output/cam1_20251023_114914.mp4')
+    localization.save_video(localization.localization_pnp, save_preview=True)
+    # localization.reproduce_capture(localization.localization_pnp, 'output/cam1_20251023_114914.mp4')
     
 
 if __name__ == "__main__":
