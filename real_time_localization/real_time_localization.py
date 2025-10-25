@@ -257,44 +257,6 @@ class Localization(Capture):
         # print(frame_data)
         return frame_data
 
-    def localization_transform(self, frame, camera_name):
-        corners, ids, rejected = cv2.aruco.detectMarkers(frame, self.detect_dict_localization, parameters=self.detect_param_localization)
-        if ids is None:
-            return {}
-        for id in ids[:, 0]:
-            if id not in self.ids:
-                index = np.where(ids[:, 0] == id)
-                ids = np.delete(ids, index, axis=0)
-                corners = np.delete(corners, index, axis=0)
-        if len(ids) == 0:
-            return {}
-
-        frame_data = {}
-        
-        for i in range(len(corners)):
-            rvec, tvec, _ = cv2.aruco.estimatePoseSingleMarkers(corners[i], self.settings['marker_size_localization'], self.cameras_mtx[camera_name], self.cameras_dist[camera_name])
-            rotation_matrix, _ = cv2.Rodrigues(rvec[0][0])
-            homogeneous_marker_point = np.eye(4)
-            homogeneous_marker_point[:3, :3] = rotation_matrix
-            homogeneous_marker_point[:3, 3] = tvec[0][0]
-
-            # homogeneous_marker_point = self.tag_inverse_transform_matrix[ids[i][0]] @ homogeneous_marker_point
-            rvec, _ = cv2.Rodrigues(homogeneous_marker_point[:3, :3])
-            tvec = homogeneous_marker_point[:3, 3] + self.tag_inverse_transform_matrix[ids[i][0]][:3, 3]
-            marker_coordinates = tvec
-
-            cv2.drawFrameAxes(frame, self.cameras_mtx[camera_name], self.cameras_dist[camera_name], rvec, tvec, 0.1)
-
-            frame_data[ids[i][0]] = tvec.flatten()
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 1
-            thickness = 2
-            color = (0, 0, 255)
-            marker_info = (f"ID: {ids[i]} X: {marker_coordinates[0]:.2f} Y: {marker_coordinates[1]:.2f} Z: {marker_coordinates[2]:.2f}")
-            cv2.putText(frame, marker_info, (int(corners[i][0][0][0]), int(corners[i][0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
-            
-        return frame_data
-
     def get_objp(self, ids):
         objp = []
         for id in ids[:, 0]:
@@ -315,10 +277,6 @@ class Localization(Capture):
             leftTop = endpointLeftTop*83/110 + endpointRightTop*27/110
             rightTop = endpointLeftTop*27/110 + endpointRightTop*83/110
             objp = []
-            # objp.append(leftTop + [0, size, 0])
-            # objp.append(rightTop + [0, size, 0])
-            # objp.append(rightTop + [0, 0, 0])
-            # objp.append(leftTop + [0, 0, 0])
             objp.append(leftTop + [0, -size/2, 0])
             objp.append(rightTop + [0, -size/2, 0])
             objp.append(rightTop + [0, size/2, 0])
@@ -337,43 +295,11 @@ class Localization(Capture):
             leftTop = endpointLeftTop*51/60 + endpointRightTop*9/60
             rightTop = endpointLeftTop*9/60 + endpointRightTop*51/60
             objp = []
-            # objp.append(leftTop + [0, size, 0])
-            # objp.append(rightTop + [0, size, 0])
-            # objp.append(rightTop + [0, 0, 0])
-            # objp.append(leftTop + [0, 0, 0])
             objp.append(leftTop + [0, -size/2, 0])
             objp.append(rightTop + [0, -size/2, 0])
             objp.append(rightTop + [0, size/2, 0])
             objp.append(leftTop + [0, size/2, 0])
             self.objp_table[id] = np.array(objp)
-
-
-    def form_tag_transform_matrix(self):
-        self.tag_transform_matrix = {}
-        self.tag_inverse_transform_matrix = {}
-        self.ids = [10, 11, 12, 13, 14, 15]
-        for i in range(len(self.ids)):
-            transform = np.eye(4)
-
-            x_transform = np.eye(4)
-            R_x = np.eye(4)
-            R_x[:3, :3] = R.from_euler('x', np.pi/2).as_matrix()
-            transform = R_x @ transform
-
-            z_transform = np.eye(4)
-            R_z = R.from_euler('z', -i * np.deg2rad(60)).as_matrix()
-            z_transform[:3, :3] = R_z
-            transform = z_transform @ transform
-            translation = np.array([0, 0, 0.095, 1])
-            transform[:4, 3] = transform @ translation
-
-            inv_transform = np.eye(4)
-            inv_transform[:3, :3] = transform[:3, :3].T
-            inv_transform[:3, 3] = -inv_transform[:3, :3] @ transform[:3, 3]
-            # transform = inv_transform
-
-            self.tag_transform_matrix[self.ids[i]] = transform
-            self.tag_inverse_transform_matrix[self.ids[i]] = inv_transform
 
     def debug_objp_table(self):
         fig = plt.figure()
@@ -392,79 +318,14 @@ class Localization(Capture):
         plt.show()
         dif = self.objp_table[10][0]-self.objp_table[10][1]
         print(np.sqrt(np.sum(dif**2)))
-
-    def debug_tag_transform_matrix(self):
-        fig = plt.figure(figsize=(10, 10))
-        self.visualize_axis_location(fig, 45, 0, 0, i=1)
-        # self.visualize_axis_location(fig, elev=45, azim=45, roll=0, i=2)
-        # self.visualize_axis_location(fig, elev=-90, azim=90, roll=0, i=3)
-        plt.show()
-        print('--------------------------------')
-        print("tag_inverse_transform_matrix")
-        for i in range(len(self.ids)):
-            print('--------------------------------')
-            print(self.ids[i])
-            print(self.tag_inverse_transform_matrix[self.ids[i]])
-        print("tag_transform_matrix")
-        for i in range(len(self.ids)):
-            print('--------------------------------')
-            print(self.ids[i])
-            print(self.tag_transform_matrix[self.ids[i]])
-
-    def visualize_axis_location(self, fig, elev, azim, roll, i):
-        ax = fig.add_subplot(1, 3, i, projection='3d', elev=elev, azim=azim, roll=roll)
-        ax.set_box_aspect([1,1,1])
-        length = 0.5
-        width = 0.5
-        height = 0.5
-        
-        x = [-length/2, length/2, length/2, -length/2]
-        y = [-width/2, -width/2, width/2, width/2]
-        for i in range(4):
-            ax.plot([x[i], x[i]], [y[i], y[i]], [0, height], 'b-')
-            
-        x = [-length/2, length/2, length/2, -length/2]
-        z = [0, 0, height, height]
-        for i in range(4):
-            ax.plot([x[i], x[i]], [-width/2, width/2], [z[i], z[i]], 'b-')
-            
-        y = [-length/2, length/2, length/2, -length/2]
-        z = [0, 0, height, height]
-        for i in range(4):
-            ax.plot([-length/2, length/2], [y[i], y[i]], [z[i], z[i]], 'b-')
-        
-        for id in self.ids:
-            colors = ['red', 'green', 'blue']
-            axis = np.eye(4) * self.settings['marker_size_localization']
-            transformation = self.tag_inverse_transform_matrix[id]
-            print('--------------------------------')
-            print(id)
-            print(transformation)
-
-            for i in range(3):
-                orientation = transformation @ axis[i, :]
-                x = transformation[0, 3]
-                y = transformation[1, 3]
-                z = transformation[2, 3]
-                u = orientation[0]
-                v = orientation[1]
-                w = orientation[2]
-                ax.quiver(x, y, z, u, v, w, color = colors[i], length=1)
-                
-                if i == 0:
-                    ax.text(x, y, z, id, color = 'black')
-            
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
     
 def main():
     localization = Localization([cv2.VideoCapture(1)])
     # localization.form_objp_table_cube()
     localization.form_objp_table_hexagon()
     # localization.debug_objp_table()
-    # localization.save_video(localization.detection, save_preview=True)
-    localization.save_video(localization.localization_pnp, save_preview=True)
+    localization.save_video(localization.detection, save_preview=True)
+    # localization.save_video(localization.localization_pnp, save_preview=True)
     # localization.reproduce_capture(localization.localization_pnp, 'output/cam1_20251023_114914.mp4')
     
 
