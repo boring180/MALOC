@@ -3,6 +3,7 @@ cv2_version = cv2.__version__
 if cv2_version != '4.6.0':
     raise ImportError(f"Expected OpenCV version 4.6.0, but found {cv2_version}. Please install the correct version.")
 
+import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
@@ -224,40 +225,108 @@ class ArUcoPoseEstimator:
         self.camera_matrix = camera_matrix
         self.dist_coeffs = dist_coeffs
         self.structureDict = {}
-
-        self.aruco_param = cv2.aruco.DetectorParameters()
-        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-        self.aruco_detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_param)
+        # OpenCV 4.6 ArUco API
+        self.aruco_param = cv2.aruco.DetectorParameters_create()
+        self.aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
 
     def add_structure(self,structure):
         if structure.name not in self.structureDict:
             self.structureDict[structure.name] = structure
     
     def estimate_pose(self, image):
-        corners, ids, rejected = self.aruco_detector.detectMarkers(image)
-        if ids is None:
-            return {}
-        for id in ids:
-            if id not in self.structureDict.keys():
+        imgp, ids, rejected = cv2.aruco.detectMarkers(image, self.aruco_dict, parameters=self.aruco_param)
+        results = {}
+        for structure in self.structureDict.values():
+            if ids is None:
+                results[structure.name] = None
                 continue
-            structure = self.structureDict[id]
-            corners = corners[id]
-            ids = ids[id]
-            objp = structure.get_object_points_from_structure(structure, ids)
-        raise NotImplementedError("Pose estimation method not implemented yet.")
-        return {
-            "name":{"p":np.array([0,0,0]),"r":np.array([0,0,0])}
-        }
+            
+            for id in ids[:, 0]:
+                if id not in structure.ids:
+                    index = np.where(ids[:, 0] == id)
+                    ids = np.delete(ids, index, axis=0)
+                    imgp = np.delete(imgp, index, axis=0)
 
-    def draw_detected_markers(self, image, results):
-        raise NotImplementedError("Draw detected markers method not implemented yet.")
+            if len(ids) == 0:
+                results[structure.name] = None
+                continue
+        
+            imgp = np.array(imgp)
+            imgp = imgp.reshape(-1, 2)
+            objp = structure.calculate_object_points(ids)
+
+            _, rvec, tvec = cv2.solvePnP(objp, imgp, self.camera_matrix, self.dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
+
+            results[structure.name] = {
+                "p": tvec,
+                "r": rvec
+            }
+
+        return results
+
+    def draw_detected_markers(self, image):
+        corners, ids, rejected = cv2.aruco.detectMarkers(
+            image,
+            self.aruco_dict,
+            parameters=self.aruco_param,
+        )
+        frame_data = {}
+        
+        for i in range(len(corners)):
+            marker_info = (f"ID: {ids[i]}")
+            frame_data[ids[i][0]] = corners[i]
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 1
+            thickness = 2
+            color = (0, 0, 255)
+            cv2.putText(image, marker_info, (int(corners[i][0][0][0]), int(corners[i][0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+        return image
+
+    def draw_estimated_poses(self, image, results):
+        for structure in self.structureDict.values():
+            if structure.name in results and results[structure.name] is not None:
+                rvec = results[structure.name]["r"]
+                tvec = results[structure.name]["p"]
+                cv2.drawFrameAxes(image, self.camera_matrix, self.dist_coeffs, rvec, tvec, 0.1)
+
+            structure_info = (f"Name: {structure.name}")
+            imgp = cv2.projectPoints(structure.corners, rvec, tvec, self.camera_matrix, self.dist_coeffs)
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 1
+            thickness = 2
+            color = (0, 0, 255)
+            cv2.putText(image, structure_info, (int(imgp[0][0][0]), int(imgp[0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
         return image
 
 if __name__ == "__main__":
     # Example usage
     marker_size = 0.056
     radius = 0.11
-    structure = ArUcoStructure.generate_ArUco_Ring_Polygon("Ring1", 16, 6, marker_size, radius)
-    fig, ax = ArUcoStructure.visualize_aruco_markers(structure)
+    # fig, ax = ArUcoStructure.visualize_aruco_markers(structure)
+    # plt.show()
 
-    plt.show()
+    camera_matrix = pickle.load(open("real_time_localization/parameters/mtx_cam1.pkl", "rb"))
+    dist_coeffs = pickle.load(open("real_time_localization/parameters/dist_cam1.pkl", "rb"))
+
+    estimator = ArUcoPoseEstimator(camera_matrix, dist_coeffs)
+    structure = ArUcoStructure.generate_ArUco_Ring_Polygon("Ring1", 16, 6, marker_size, radius)
+    estimator.add_structure(structure)
+
+    camera = cv2.VideoCapture(0)
+
+    try:
+        while True:
+            ret, frame = camera.read()
+            if not ret:
+                break
+            # results = estimator.estimate_pose(frame)
+            frame = estimator.draw_detected_markers(frame)
+            # frame = estimator.draw_estimated_poses(frame, results)
+            cv2.imshow("Frame", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+    except Exception as e:
+        print(e)
+    finally:
+        camera.release()
+        cv2.destroyAllWindows()
