@@ -2,6 +2,7 @@ import cv2
 cv2_version = cv2.__version__
 if cv2_version != '4.6.0':
     raise ImportError(f"Expected OpenCV version 4.6.0, but found {cv2_version}. Please install the correct version.")
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
@@ -13,11 +14,13 @@ class ArUcoStructure:
         self.locations = locations
         self.normals = normals
         self.size = size
-        self.corners = self.calculate_aruco_corners()
+        self.corners, self.axis_x, self.axis_y = self.calculate_aruco_corners()
 
     def calculate_aruco_corners(self):
         N = self.locations.shape[0]
         corners = np.zeros((N, 4, 3))  # N markers, 4 corners each, 3 coordinates
+        axis_x = np.zeros([N, 3])
+        axis_y = np.zeros([N, 3])
 
         half_size = self.size / 2
 
@@ -30,34 +33,38 @@ class ArUcoStructure:
             normal = normal / np.linalg.norm(normal)
             
             # Create a coordinate system for the marker
-            # First basis vector (pointing right in the marker's local frame)
+            # First basis vector (pointing y-axis in the marker's local frame)
             if np.allclose(normal, [0, 0, 1]) or np.allclose(normal, [0, 0, -1]):
                 # If normal is along z-axis, use x-axis as reference
-                v1 = np.array([1, 0, 0])
+                v_y = np.array([1, 0, 0])
             else:
                 # Otherwise cross with z-axis to get a vector in marker plane
-                v1 = np.cross(normal, [0, 0, 1])
+                v_y = np.cross(normal, [0, 0, 1])
                 
-            v1 = v1 / np.linalg.norm(v1)
-            
-            # Second basis vector (pointing down in the marker's local frame)
-            v2 = np.cross(normal, v1)
-            v2 = v2 / np.linalg.norm(v2)
-            
+            if normal[0] > 0:
+                v_y = -v_y
+            v_y = v_y / np.linalg.norm(v_y)
+            axis_y[i] = v_y
+
+            # Second basis vector (pointing x-axis in the marker's local frame)
+            v_x = np.cross(normal, v_y)
+            v_x = -v_x / np.linalg.norm(v_x)
+            axis_x[i] = v_x
+
             # Calculate the four corners
             # Top-left: center - half_size*v1 - half_size*v2
-            corners[i, 0] = center - half_size * v1 - half_size * v2
+            corners[i, 0] = center - half_size * v_x + half_size * v_y
             
             # Top-right: center + half_size*v1 - half_size*v2
-            corners[i, 1] = center + half_size * v1 - half_size * v2
+            corners[i, 1] = center + half_size * v_x + half_size * v_y
             
             # Bottom-right: center + half_size*v1 + half_size*v2
-            corners[i, 2] = center + half_size * v1 + half_size * v2
+            corners[i, 2] = center + half_size * v_x - half_size * v_y
             
             # Bottom-left: center - half_size*v1 + half_size*v2
-            corners[i, 3] = center - half_size * v1 + half_size * v2
+            corners[i, 3] = center - half_size * v_x - half_size * v_y
 
-        return corners
+        return corners, axis_x, axis_y
 
     def calculate_object_points(self,detected_ids):
         objp_list = []
@@ -77,11 +84,10 @@ class ArUcoStructure:
         return ArUcoStructure(data['name'], data['ids'], data['locations'], data['normals'], data['size'])
 
     @staticmethod
-    def generate_ArUco_Ring_Polygon(startID, number_of_markers, marker_size, spacing):
+    def generate_ArUco_Ring_Polygon(name, startID, number_of_markers, marker_size, radius):
         # generate a N side polygon ring of markers in the XZ plane center is (0,0,0) and all normal vectors point outwards from the (0,0,0) in XZ plane
         ids = np.arange(startID, startID + number_of_markers)
         angle_increment = 2 * np.pi / number_of_markers
-        radius = (marker_size + spacing) / (2 * np.sin(np.pi / number_of_markers))
         locations = []
         for i in range(number_of_markers):
             angle = i * angle_increment
@@ -96,7 +102,7 @@ class ArUcoStructure:
             nz = np.sin(angle)
             normals.append([nx, 0, nz])
         normals = np.array(normals)
-        return ArUcoStructure(ids, locations, normals, marker_size)
+        return ArUcoStructure(name, ids, locations, normals, marker_size)
 
     @staticmethod
     def generate_Aruco_Grid(name,startID, rows, cols, marker_size, spacing):
@@ -149,11 +155,11 @@ class ArUcoStructure:
             ax.scatter(marker_corners[:, 0], marker_corners[:, 1], marker_corners[:, 2], 
                         color=color, marker='o', s=50)
             
-            # Label corners if requested
-            # for j, corner in enumerate(marker_corners):
-            #     ax.text(corner[0], corner[1], corner[2], 
-            #             f'M{i+1}-{corner_names[j]}', 
-            #             fontsize=8, color=color)
+            # Label corners
+            for j, corner in enumerate(marker_corners):
+                ax.text(corner[0], corner[1], corner[2], 
+                        f'{structure.ids[i]}-{j}', 
+                        fontsize=8, color=color)
             
             # Connect corners to form the marker outline (closed polygon)
             # Extract coordinates for polygon edges
@@ -171,6 +177,16 @@ class ArUcoStructure:
                         [structure.locations[i, 2], corner[2]],
                         '--', color=color, linewidth=1, alpha=0.5)
 
+            # Plot axis x
+            ax.plot([structure.locations[i, 0], structure.locations[i, 0] + structure.axis_x[i, 0]],
+                    [structure.locations[i, 1], structure.locations[i, 1] + structure.axis_x[i, 1]],
+                    [structure.locations[i, 2], structure.locations[i, 2] + structure.axis_x[i, 2]],
+                    '-', color='red', linewidth=2)
+            # Plot axis y
+            ax.plot([structure.locations[i, 0], structure.locations[i, 0] + structure.axis_y[i, 0]],
+                    [structure.locations[i, 1], structure.locations[i, 1] + structure.axis_y[i, 1]],
+                    [structure.locations[i, 2], structure.locations[i, 2] + structure.axis_y[i, 2]],
+                    '-', color='blue', linewidth=2)
         # Set labels and title
         ax.set_xlabel('X (meters)')
         ax.set_ylabel('Y (meters)')
@@ -196,31 +212,52 @@ class ArUcoStructure:
         plt.tight_layout()
         return fig, ax
 
+    @staticmethod
+    def get_object_points_from_structure(structure, detected_ids):
+        objp_list = []
+        for i in range(structure.corners.shape[0]):
+            objp_list.append(structure.corners[i])
+        return np.array(objp_list)
+
 class ArUcoPoseEstimator:
     def __init__(self, camera_matrix, dist_coeffs):
         self.camera_matrix = camera_matrix
         self.dist_coeffs = dist_coeffs
-        self.aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
-        self.parameters = cv2.aruco.DetectorParameters_create()
         self.structureDict = {}
+
+        self.aruco_param = cv2.aruco.DetectorParameters()
+        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+        self.aruco_detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_param)
 
     def add_structure(self,structure):
         if structure.name not in self.structureDict:
             self.structureDict[structure.name] = structure
     
     def estimate_pose(self, image):
+        corners, ids, rejected = self.aruco_detector.detectMarkers(image)
+        if ids is None:
+            return {}
+        for id in ids:
+            if id not in self.structureDict.keys():
+                continue
+            structure = self.structureDict[id]
+            corners = corners[id]
+            ids = ids[id]
+            objp = structure.get_object_points_from_structure(structure, ids)
         raise NotImplementedError("Pose estimation method not implemented yet.")
         return {
             "name":{"p":np.array([0,0,0]),"r":np.array([0,0,0])}
         }
+
     def draw_detected_markers(self, image, results):
         raise NotImplementedError("Draw detected markers method not implemented yet.")
         return image
 
 if __name__ == "__main__":
     # Example usage
-    marker_size = 0.05  # 5 cm
-    spacing = 0.01      # 1 cm
-    structure = ArUcoStructure.generate_Aruco_Grid("Grid1", 10, 3, 4, marker_size, spacing)
+    marker_size = 0.056
+    radius = 0.11
+    structure = ArUcoStructure.generate_ArUco_Ring_Polygon("Ring1", 16, 6, marker_size, radius)
     fig, ax = ArUcoStructure.visualize_aruco_markers(structure)
+
     plt.show()
