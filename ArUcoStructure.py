@@ -67,14 +67,13 @@ class ArUcoStructure:
 
         return corners, axis_x, axis_y
 
-    def calculate_object_points(self,detected_ids):
-        objp_list = []
+    def calculate_object_points(self, detected_ids):
+        objp = []
         for id in detected_ids:
             if id in self.ids:
                 index = np.where(self.ids == id)[0][0]
-                corners = self.corners[index]
-                objp_list.append(corners)
-        return np.array(objp_list)
+                objp.extend(self.corners[index])
+        return np.array(objp)
     
     def save_structure(self, filename):
         np.savez(filename, ids=self.ids, locations=self.locations, normals=self.normals, size=self.size, name=self.name)
@@ -85,9 +84,11 @@ class ArUcoStructure:
         return ArUcoStructure(data['name'], data['ids'], data['locations'], data['normals'], data['size'])
 
     @staticmethod
-    def generate_ArUco_Ring_Polygon(name, startID, number_of_markers, marker_size, radius):
+    def generate_ArUco_Ring_Polygon(name, startID, number_of_markers, marker_size, radius, clockwise=True):
         # generate a N side polygon ring of markers in the XZ plane center is (0,0,0) and all normal vectors point outwards from the (0,0,0) in XZ plane
         ids = np.arange(startID, startID + number_of_markers)
+        if clockwise:
+            ids = ids[::-1]
         angle_increment = 2 * np.pi / number_of_markers
         locations = []
         for i in range(number_of_markers):
@@ -234,9 +235,12 @@ class ArUcoPoseEstimator:
             self.structureDict[structure.name] = structure
     
     def estimate_pose(self, image):
-        imgp, ids, rejected = cv2.aruco.detectMarkers(image, self.aruco_dict, parameters=self.aruco_param)
+        raw_imgp, raw_ids, rejected = cv2.aruco.detectMarkers(image, self.aruco_dict, parameters=self.aruco_param)
         results = {}
         for structure in self.structureDict.values():
+            print("structure.name", structure.name)
+            ids = raw_ids
+            imgp = raw_imgp
             if ids is None:
                 results[structure.name] = None
                 continue
@@ -254,6 +258,8 @@ class ArUcoPoseEstimator:
             imgp = np.array(imgp)
             imgp = imgp.reshape(-1, 2)
             objp = structure.calculate_object_points(ids)
+            print("objp", objp)
+            print("imgp", imgp)
 
             _, rvec, tvec = cv2.solvePnP(objp, imgp, self.camera_matrix, self.dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
 
@@ -280,6 +286,11 @@ class ArUcoPoseEstimator:
             thickness = 2
             color = (0, 0, 255)
             cv2.putText(image, marker_info, (int(corners[i][0][0][0]), int(corners[i][0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+
+            cv2.putText(image, '0', (int(corners[i][0][0][0]), int(corners[i][0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+            cv2.putText(image, '1', (int(corners[i][0][1][0]), int(corners[i][0][1][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+            cv2.putText(image, '2', (int(corners[i][0][2][0]), int(corners[i][0][2][1])), font, font_scale, color, thickness, cv2.LINE_AA)
+            cv2.putText(image, '3', (int(corners[i][0][3][0]), int(corners[i][0][3][1])), font, font_scale, color, thickness, cv2.LINE_AA)
         return image
 
     def draw_estimated_poses(self, image, results):
@@ -288,22 +299,19 @@ class ArUcoPoseEstimator:
                 rvec = results[structure.name]["r"]
                 tvec = results[structure.name]["p"]
                 cv2.drawFrameAxes(image, self.camera_matrix, self.dist_coeffs, rvec, tvec, 0.1)
+            else:
+                continue
 
-            structure_info = (f"Name: {structure.name}")
-            imgp = cv2.projectPoints(structure.corners, rvec, tvec, self.camera_matrix, self.dist_coeffs)
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 1
-            thickness = 2
-            color = (0, 0, 255)
-            cv2.putText(image, structure_info, (int(imgp[0][0][0]), int(imgp[0][0][1])), font, font_scale, color, thickness, cv2.LINE_AA)
         return image
 
 if __name__ == "__main__":
     # Example usage
     marker_size = 0.056
     radius = 0.11
+    # structure = ArUcoStructure.generate_ArUco_Ring_Polygon("Ring1", 16, 6, marker_size, radius)
     # fig, ax = ArUcoStructure.visualize_aruco_markers(structure)
     # plt.show()
+    # exit()
 
     camera_matrix = pickle.load(open("real_time_localization/parameters/mtx_cam1.pkl", "rb"))
     dist_coeffs = pickle.load(open("real_time_localization/parameters/dist_cam1.pkl", "rb"))
@@ -312,16 +320,20 @@ if __name__ == "__main__":
     structure = ArUcoStructure.generate_ArUco_Ring_Polygon("Ring1", 16, 6, marker_size, radius)
     estimator.add_structure(structure)
 
-    camera = cv2.VideoCapture(0)
+    structure = ArUcoStructure.generate_ArUco_Ring_Polygon("Ring2", 10, 6, marker_size, radius, clockwise=False)
+    estimator.add_structure(structure)
+
+    camera = cv2.VideoCapture(1)
 
     try:
         while True:
             ret, frame = camera.read()
             if not ret:
                 break
-            # results = estimator.estimate_pose(frame)
-            frame = estimator.draw_detected_markers(frame)
-            # frame = estimator.draw_estimated_poses(frame, results)
+            results = estimator.estimate_pose(frame)
+            # print("results", results)
+            # frame = estimator.draw_detected_markers(frame)
+            frame = estimator.draw_estimated_poses(frame, results)
             cv2.imshow("Frame", frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
